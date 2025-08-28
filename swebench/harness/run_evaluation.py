@@ -596,8 +596,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--namespace",
         type=optional_str,
-        default="swebench",
-        help='Namespace for images. (use "none" to use no namespace)',
+        default="slimshetty/swebench-verified",
+        help='Docker repository to pull images from (e.g., "slimshetty/swebench-verified"). Use "none" for local builds.',
     )
     parser.add_argument(
         "--instance_image_tag", type=str, default="latest", help="Instance image tag"

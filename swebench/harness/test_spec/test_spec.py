@@ -107,10 +107,14 @@ class TestSpec:
 
     @property
     def instance_image_key(self):
-        key = f"sweb.eval.{self.arch}.{self.instance_id.lower()}:{self.instance_image_tag}"
         if self.is_remote_image:
-            key = f"{self.namespace}/{key}".replace("__", "_1776_")
-        return key
+            # Support for pre-built images from registries like Docker Hub, GHCR.
+            # These images are tagged with the instance information.
+            # e.g. slimshetty/swebench-verified:sweb.eval.x86_64.sympy__sympy-24562
+            tag = f"sweb.eval.{self.arch}.{self.instance_id.lower()}"
+            return f"{self.namespace}:{tag}"
+        # For local image builds, maintain the original repository:tag format
+        return f"sweb.eval.{self.arch}.{self.instance_id.lower()}:{self.instance_image_tag}"
 
     @property
     def is_remote_image(self):
