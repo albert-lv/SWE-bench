@@ -164,19 +164,21 @@ def get_requirements_by_commit(repo: str, commit: str, offline: bool = False) ->
     for line in lines.split("\n"):
         if line.strip().startswith("-r"):
             # Handle recursive requirements
-            file_name = line[len("-r") :].strip()
-            reqs_url = os.path.join(
-                SWE_BENCH_URL_RAW,
-                repo,
-                commit,
-                req_dir,
-                file_name,
-            )
-            reqs = requests.get(reqs_url, headers=HEADERS)
-            if reqs.status_code == 200:
-                for line_extra in reqs.text.split("\n"):
-                    if not exclude_line(line_extra):
-                        additional_reqs.append(line_extra)
+            if not offline:  # Only process recursive requirements in online mode
+                file_name = line[len("-r") :].strip()
+                reqs_url = os.path.join(
+                    SWE_BENCH_URL_RAW,
+                    repo,
+                    commit,
+                    req_dir,
+                    file_name,
+                )
+                reqs = requests.get(reqs_url, headers=HEADERS)
+                if reqs.status_code == 200:
+                    for line_extra in reqs.text.split("\n"):
+                        if not exclude_line(line_extra):
+                            additional_reqs.append(line_extra)
+            # In offline mode, skip recursive requirements
         else:
             if not exclude_line(line):
                 original_req.append(line)

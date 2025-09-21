@@ -94,8 +94,9 @@ def make_eval_script_list_js(
     eval_commands = make_eval_script_list_common(
         instance, specs, env_name, repo_directory, base_commit, test_patch, offline=offline
     )
-    # Insert downloading right after reset command
-    eval_commands[4:4] = get_download_img_commands(instance)
+    # Insert downloading right after reset command (only in online mode)
+    if not offline:
+        eval_commands[4:4] = get_download_img_commands(instance)
     if instance["repo"] in MAP_REPO_TO_TEST_CMDS:
         # Update test commands if they are custom commands
         test_commands = MAP_REPO_TO_TEST_CMDS[instance["repo"]](instance)
