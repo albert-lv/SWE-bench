@@ -68,7 +68,11 @@ MAP_REPO_TO_TEST_CMDS = {
 
 
 # MARK: Utility Functions
-def get_download_img_commands(instance) -> list:
+def get_download_img_commands(instance, offline: bool = False) -> list:
+    if offline:
+        # In offline mode, skip downloading images
+        return []
+    
     cmds = []
     image_assets = {}
     if "image_assets" in instance:
@@ -96,7 +100,7 @@ def make_eval_script_list_js(
     )
     # Insert downloading right after reset command (only in online mode)
     if not offline:
-        eval_commands[4:4] = get_download_img_commands(instance)
+        eval_commands[4:4] = get_download_img_commands(instance, offline=offline)
     if instance["repo"] in MAP_REPO_TO_TEST_CMDS:
         # Update test commands if they are custom commands
         test_commands = MAP_REPO_TO_TEST_CMDS[instance["repo"]](instance)

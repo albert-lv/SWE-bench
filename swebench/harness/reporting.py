@@ -19,6 +19,7 @@ def make_run_report(
     full_dataset: list,
     run_id: str,
     client: Optional[docker.DockerClient] = None,
+    offline: bool = False,
 ) -> Path:
     """
     Make a final evaluation and run report of the instances that have been run.
@@ -78,7 +79,7 @@ def make_run_report(
     if client:
         # get remaining images and containers
         images = list_images(client)
-        test_specs = list(map(make_test_spec, full_dataset))
+        test_specs = list(map(lambda instance: make_test_spec(instance, offline=offline), full_dataset))
         for spec in test_specs:
             image_name = spec.instance_image_key
             if image_name in images:

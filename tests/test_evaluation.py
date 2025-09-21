@@ -25,6 +25,7 @@ def test_make_run_report(tmpdir) -> None:
             [TEST_INSTANCE],
             "test",
             client,
+            offline=False,
         )
         assert output_path.is_file()
         report = json.loads(output_path.read_text())

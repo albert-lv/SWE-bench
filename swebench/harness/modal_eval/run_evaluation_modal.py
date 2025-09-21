@@ -459,4 +459,4 @@ def run_instances_modal(
                             # This happens if the test fails with any exception
                             print(f"{result.instance_id}: no report.json")
 
-            make_run_report(predictions, full_dataset, run_id)
+            make_run_report(predictions, full_dataset, run_id, offline=False)
