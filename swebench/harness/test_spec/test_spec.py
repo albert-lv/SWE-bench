@@ -183,6 +183,7 @@ def make_test_spec(
     env_image_tag: str = LATEST,
     instance_image_tag: str = LATEST,
     arch: str = "x86_64",
+    offline: bool = False,
 ) -> TestSpec:
     if isinstance(instance, TestSpec):
         return instance
@@ -215,11 +216,11 @@ def make_test_spec(
     docker_specs = specs.get("docker_specs", {})
 
     repo_script_list = make_repo_script_list(
-        specs, repo, repo_directory, base_commit, env_name
+        specs, repo, repo_directory, base_commit, env_name, offline=offline
     )
-    env_script_list = make_env_script_list(instance, specs, env_name)
+    env_script_list = make_env_script_list(instance, specs, env_name, offline=offline)
     eval_script_list = make_eval_script_list(
-        instance, specs, env_name, repo_directory, base_commit, test_patch
+        instance, specs, env_name, repo_directory, base_commit, test_patch, offline=offline
     )
     return TestSpec(
         instance_id=instance_id,

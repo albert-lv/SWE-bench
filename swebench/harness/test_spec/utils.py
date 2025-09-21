@@ -20,19 +20,28 @@ def get_test_cmds(instance) -> list:
 
 
 def make_repo_script_list_common(
-    specs, repo, repo_directory, base_commit, env_name
+    specs, repo, repo_directory, base_commit, env_name, offline: bool = False
 ) -> list:
     """
     Create a list of bash commands to set up the repository for testing.
     This is the setup script for the instance image.
     """
-    setup_commands = [
-        f"git clone -o origin https://github.com/{repo} {repo_directory}",
-        f"chmod -R 777 {repo_directory}",  # So nonroot user can run tests
-        f"cd {repo_directory}",
-        f"git reset --hard {base_commit}",
-        "git remote remove origin",  # Remove the remote so the agent won't see newer commits
-    ]
+    if offline:
+        # In offline mode, assume repository is already available in prebuilt image
+        setup_commands = [
+            f"echo 'Offline mode: Skipping git clone for {repo}'",
+            f"chmod -R 777 {repo_directory}",  # So nonroot user can run tests
+            f"cd {repo_directory}",
+            f"git reset --hard {base_commit}",
+        ]
+    else:
+        setup_commands = [
+            f"git clone -o origin https://github.com/{repo} {repo_directory}",
+            f"chmod -R 777 {repo_directory}",  # So nonroot user can run tests
+            f"cd {repo_directory}",
+            f"git reset --hard {base_commit}",
+            "git remote remove origin",  # Remove the remote so the agent won't see newer commits
+        ]
     if "pre_install" in specs:
         setup_commands.extend(specs["pre_install"])
     if "install" in specs:
@@ -42,7 +51,7 @@ def make_repo_script_list_common(
     return setup_commands
 
 
-def make_env_script_list_common(instance, specs, env_name) -> list:
+def make_env_script_list_common(instance, specs, env_name, offline: bool = False) -> list:
     """
     Creates the list of commands to set up the environment for testing.
     This is the setup script for the environment image.
@@ -57,7 +66,7 @@ def make_env_script_list_common(instance, specs, env_name) -> list:
 
 
 def make_eval_script_list_common(
-    instance, specs, env_name, repo_directory, base_commit, test_patch
+    instance, specs, env_name, repo_directory, base_commit, test_patch, offline: bool = False
 ) -> list:
     """
     Applies the test patch and runs the tests.

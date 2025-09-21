@@ -75,6 +75,7 @@ def run_instance(
     run_id: str,
     timeout: int | None = None,
     rewrite_reports: bool = False,
+    offline: bool = False,
 ):
     """
     Run a single instance with the given prediction.
@@ -139,7 +140,7 @@ def run_instance(
     try:
         # Build + start instance container (instance image should already be built)
         container = build_container(
-            test_spec, client, run_id, logger, rm_image, force_rebuild
+            test_spec, client, run_id, logger, rm_image, force_rebuild, offline
         )
         container.start()
         logger.info(f"Container for {instance_id} started: {container.id}")
@@ -275,6 +276,7 @@ def run_instances(
     namespace: str | None = "swebench",
     instance_image_tag: str = "latest",
     rewrite_reports: bool = False,
+    offline: bool = False,
 ):
     """
     Run all instances for the given predictions in parallel.
@@ -293,7 +295,7 @@ def run_instances(
     test_specs = list(
         map(
             lambda instance: make_test_spec(
-                instance, namespace=namespace, instance_image_tag=instance_image_tag
+                instance, namespace=namespace, instance_image_tag=instance_image_tag, offline=offline
             ),
             instances,
         )
@@ -330,6 +332,7 @@ def run_instances(
                 run_id,
                 timeout,
                 rewrite_reports,
+                offline,
             )
         )
 
@@ -456,6 +459,7 @@ def main(
     modal: bool,
     instance_image_tag: str = "latest",
     report_dir: str = ".",
+    offline: bool = False,
 ):
     """
     Run evaluation harness for the given dataset and predictions.
@@ -520,6 +524,7 @@ def main(
             namespace=namespace,
             instance_image_tag=instance_image_tag,
             rewrite_reports=rewrite_reports,
+            offline=offline,
         )
 
     # clean images + make final report
@@ -614,6 +619,14 @@ if __name__ == "__main__":
 
     # Modal execution args
     parser.add_argument("--modal", type=str2bool, default=False, help="Run on Modal")
+    
+    # Offline mode args
+    parser.add_argument(
+        "--offline", 
+        type=str2bool, 
+        default=False, 
+        help="Enable offline mode - skip network operations when using prebuilt images"
+    )
 
     args = parser.parse_args()
     main(**vars(args))

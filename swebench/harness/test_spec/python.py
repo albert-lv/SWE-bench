@@ -28,7 +28,11 @@ REPLACE_REQ_PACKAGES = [
 
 
 @cache
-def get_environment_yml_by_commit(repo: str, commit: str, env_name: str) -> str:
+def get_environment_yml_by_commit(repo: str, commit: str, env_name: str, offline: bool = False) -> str:
+    if offline:
+        # In offline mode, return minimal environment.yml assuming environment is prebuilt
+        return f"name: {env_name}\nchannels:\n  - defaults\ndependencies:\n  - python"
+    
     for req_path in MAP_REPO_TO_ENV_YML_PATHS[repo]:
         reqs_url = posixpath.join(SWE_BENCH_URL_RAW, repo, commit, req_path)
         reqs = requests.get(reqs_url, headers=HEADERS)
@@ -112,7 +116,7 @@ def clean_environment_yml(yml_text: str) -> str:
     return prefix + pip_portion + suffix
 
 
-def get_environment_yml(instance: SWEbenchInstance, env_name: str) -> str:
+def get_environment_yml(instance: SWEbenchInstance, env_name: str, offline: bool = False) -> str:
     """
     Get environment.yml for given task instance
 
@@ -128,13 +132,17 @@ def get_environment_yml(instance: SWEbenchInstance, env_name: str) -> str:
         if "environment_setup_commit" in instance
         else instance["base_commit"]
     )
-    yml_text = get_environment_yml_by_commit(instance["repo"], commit, env_name)
+    yml_text = get_environment_yml_by_commit(instance["repo"], commit, env_name, offline=offline)
     yml_text = clean_environment_yml(yml_text)
     return yml_text
 
 
 @cache
-def get_requirements_by_commit(repo: str, commit: str) -> str:
+def get_requirements_by_commit(repo: str, commit: str, offline: bool = False) -> str:
+    if offline:
+        # In offline mode, return empty requirements assuming dependencies are preinstalled
+        return ""
+    
     for req_path in MAP_REPO_TO_REQS_PATHS[repo]:
         reqs_url = posixpath.join(SWE_BENCH_URL_RAW, repo, commit, req_path)
         reqs = requests.get(reqs_url, headers=HEADERS)
@@ -205,7 +213,7 @@ def clean_requirements(requirements_text: str) -> str:
     return requirements_text
 
 
-def get_requirements(instance: SWEbenchInstance) -> str:
+def get_requirements(instance: SWEbenchInstance, offline: bool = False) -> str:
     """
     Get requirements.txt for given task instance
 
@@ -221,7 +229,7 @@ def get_requirements(instance: SWEbenchInstance) -> str:
         else instance["base_commit"]
     )
 
-    requirements_text = get_requirements_by_commit(instance["repo"], commit)
+    requirements_text = get_requirements_by_commit(instance["repo"], commit, offline=offline)
     requirements_text = clean_requirements(requirements_text)
     return requirements_text
 
@@ -261,24 +269,37 @@ def get_test_directives(instance: SWEbenchInstance) -> list:
 
 
 def make_repo_script_list_py(
-    specs, repo, repo_directory, base_commit, env_name
+    specs, repo, repo_directory, base_commit, env_name, offline: bool = False
 ) -> list:
     """
     Create a list of bash commands to set up the repository for testing.
     This is the setup script for the instance image.
     """
-    setup_commands = [
-        f"git clone -o origin https://github.com/{repo} {repo_directory}",
-        f"chmod -R 777 {repo_directory}",  # So nonroot user can run tests
-        f"cd {repo_directory}",
-        f"git reset --hard {base_commit}",
-        # Remove the remote so the agent won't see newer commits.
-        "git remote remove origin",
-        # Make sure conda is available for later use
-        "source /opt/miniconda3/bin/activate",
-        f"conda activate {env_name}",
-        'echo "Current environment: $CONDA_DEFAULT_ENV"',
-    ]
+    if offline:
+        # In offline mode, assume repository is already available in prebuilt image
+        setup_commands = [
+            f"echo 'Offline mode: Skipping git clone for {repo}'",
+            f"chmod -R 777 {repo_directory}",  # So nonroot user can run tests
+            f"cd {repo_directory}",
+            f"git reset --hard {base_commit}",
+            # Make sure conda is available for later use
+            "source /opt/miniconda3/bin/activate",
+            f"conda activate {env_name}",
+            'echo "Current environment: $CONDA_DEFAULT_ENV"',
+        ]
+    else:
+        setup_commands = [
+            f"git clone -o origin https://github.com/{repo} {repo_directory}",
+            f"chmod -R 777 {repo_directory}",  # So nonroot user can run tests
+            f"cd {repo_directory}",
+            f"git reset --hard {base_commit}",
+            # Remove the remote so the agent won't see newer commits.
+            "git remote remove origin",
+            # Make sure conda is available for later use
+            "source /opt/miniconda3/bin/activate",
+            f"conda activate {env_name}",
+            'echo "Current environment: $CONDA_DEFAULT_ENV"',
+        ]
     if repo in MAP_REPO_TO_INSTALL:
         setup_commands.append(MAP_REPO_TO_INSTALL[repo])
 
@@ -305,7 +326,7 @@ def make_repo_script_list_py(
     return setup_commands
 
 
-def make_env_script_list_py(instance, specs, env_name) -> list:
+def make_env_script_list_py(instance, specs, env_name, offline: bool = False) -> list:
     """
     Creates the list of commands to set up the conda environment for testing.
     This is the setup script for the environment image.
@@ -314,66 +335,74 @@ def make_env_script_list_py(instance, specs, env_name) -> list:
     reqs_commands = [
         "source /opt/miniconda3/bin/activate",
     ]
-    # Create conda environment according to install instructinos
-    pkgs = specs.get("packages", "")
-    if pkgs == "requirements.txt":
-        # Create environment
-        cmd = f"conda create -n {env_name} python={specs['python']} -y"
-        reqs_commands.append(cmd)
-
-        # Install dependencies
-        reqs = get_requirements(instance)
-        path_to_reqs = "$HOME/requirements.txt"
-        reqs_commands.append(
-            f"cat <<'{HEREDOC_DELIMITER}' > {path_to_reqs}\n{reqs}\n{HEREDOC_DELIMITER}"
-        )
-        cmd = f"conda activate {env_name} && python -m pip install -r {path_to_reqs}"
-        reqs_commands.append(cmd)
-        reqs_commands.append(f"rm {path_to_reqs}")
-    elif pkgs == "environment.yml":
-        # Create environment from yml
-        reqs = get_environment_yml(instance, env_name)
-        path_to_reqs = "environment.yml"
-        reqs_commands.append(
-            f"cat <<'{HEREDOC_DELIMITER}' > {path_to_reqs}\n{reqs}\n{HEREDOC_DELIMITER}"
-        )
-        if "no_use_env" in specs and specs["no_use_env"]:
-            # `conda create` based installation
-            cmd = (
-                f"conda create -c conda-forge -n {env_name} python={specs['python']} -y"
-            )
+    
+    if offline:
+        # In offline mode, assume environment is already set up in prebuilt image
+        reqs_commands.extend([
+            f"echo 'Offline mode: Skipping environment setup for {env_name}'",
+            f"conda activate {env_name}",
+        ])
+    else:
+        # Create conda environment according to install instructions
+        pkgs = specs.get("packages", "")
+        if pkgs == "requirements.txt":
+            # Create environment
+            cmd = f"conda create -n {env_name} python={specs['python']} -y"
             reqs_commands.append(cmd)
 
             # Install dependencies
-            cmd = f"conda env update -f {path_to_reqs}"
+            reqs = get_requirements(instance, offline=offline)
+            path_to_reqs = "$HOME/requirements.txt"
+            reqs_commands.append(
+                f"cat <<'{HEREDOC_DELIMITER}' > {path_to_reqs}\n{reqs}\n{HEREDOC_DELIMITER}"
+            )
+            cmd = f"conda activate {env_name} && python -m pip install -r {path_to_reqs}"
             reqs_commands.append(cmd)
+            reqs_commands.append(f"rm {path_to_reqs}")
+        elif pkgs == "environment.yml":
+            # Create environment from yml
+            reqs = get_environment_yml(instance, env_name, offline=offline)
+            path_to_reqs = "environment.yml"
+            reqs_commands.append(
+                f"cat <<'{HEREDOC_DELIMITER}' > {path_to_reqs}\n{reqs}\n{HEREDOC_DELIMITER}"
+            )
+            if "no_use_env" in specs and specs["no_use_env"]:
+                # `conda create` based installation
+                cmd = (
+                    f"conda create -c conda-forge -n {env_name} python={specs['python']} -y"
+                )
+                reqs_commands.append(cmd)
+
+                # Install dependencies
+                cmd = f"conda env update -f {path_to_reqs}"
+                reqs_commands.append(cmd)
+            else:
+                # `conda env create` based installation
+                cmd = f"conda env create --file {path_to_reqs}"
+                reqs_commands.append(cmd)
+
+                cmd = f"conda activate {env_name} && conda install python={specs['python']} -y"
+                reqs_commands.append(cmd)
+
+            # Remove environment.yml
+            reqs_commands.append(f"rm {path_to_reqs}")
         else:
-            # `conda env create` based installation
-            cmd = f"conda env create --file {path_to_reqs}"
+            # Create environment + install dependencies
+            cmd = f"conda create -n {env_name} python={specs['python']} {pkgs} -y"
             reqs_commands.append(cmd)
 
-            cmd = f"conda activate {env_name} && conda install python={specs['python']} -y"
+        reqs_commands.append(f"conda activate {env_name}")
+
+        # Install additional packages if specified
+        if "pip_packages" in specs:
+            pip_packages = " ".join(specs["pip_packages"])
+            cmd = f"python -m pip install {pip_packages}"
             reqs_commands.append(cmd)
-
-        # Remove environment.yml
-        reqs_commands.append(f"rm {path_to_reqs}")
-    else:
-        # Create environment + install dependencies
-        cmd = f"conda create -n {env_name} python={specs['python']} {pkgs} -y"
-        reqs_commands.append(cmd)
-
-    reqs_commands.append(f"conda activate {env_name}")
-
-    # Install additional packages if specified
-    if "pip_packages" in specs:
-        pip_packages = " ".join(specs["pip_packages"])
-        cmd = f"python -m pip install {pip_packages}"
-        reqs_commands.append(cmd)
     return reqs_commands
 
 
 def make_eval_script_list_py(
-    instance, specs, env_name, repo_directory, base_commit, test_patch
+    instance, specs, env_name, repo_directory, base_commit, test_patch, offline: bool = False
 ) -> list:
     """
     Applies the test patch and runs the tests.

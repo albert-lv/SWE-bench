@@ -437,6 +437,7 @@ def build_container(
     logger: logging.Logger,
     nocache: bool,
     force_rebuild: bool = False,
+    offline: bool = False,
 ):
     """
     Builds the instance image for the given test spec and creates a container from the image.
@@ -448,6 +449,7 @@ def build_container(
         logger (logging.Logger): Logger to use for logging the build process
         nocache (bool): Whether to use the cache when building
         force_rebuild (bool): Whether to force rebuild the image even if it already exists
+        offline (bool): Whether to skip network operations (image pulls) in offline mode
     """
     # Build corresponding instance image
     if force_rebuild:
@@ -458,6 +460,13 @@ def build_container(
         try:
             client.images.get(test_spec.instance_image_key)
         except docker.errors.ImageNotFound:
+            if offline:
+                logger.warning(f"Offline mode: Skipping image pull for {test_spec.instance_image_key}")
+                raise BuildImageError(
+                    test_spec.instance_id, 
+                    f"Image {test_spec.instance_image_key} not found locally and offline mode is enabled", 
+                    logger
+                )
             try:
                 client.images.pull(test_spec.instance_image_key)
             except docker.errors.NotFound as e:

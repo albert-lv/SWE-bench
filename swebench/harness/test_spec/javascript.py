@@ -86,13 +86,13 @@ def get_download_img_commands(instance) -> list:
 
 # MARK: Script Creation Functions
 def make_eval_script_list_js(
-    instance, specs, env_name, repo_directory, base_commit, test_patch
+    instance, specs, env_name, repo_directory, base_commit, test_patch, offline: bool = False
 ) -> list:
     """
     Applies the test patch and runs the tests.
     """
     eval_commands = make_eval_script_list_common(
-        instance, specs, env_name, repo_directory, base_commit, test_patch
+        instance, specs, env_name, repo_directory, base_commit, test_patch, offline=offline
     )
     # Insert downloading right after reset command
     eval_commands[4:4] = get_download_img_commands(instance)
